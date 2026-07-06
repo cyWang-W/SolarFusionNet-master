@@ -26,8 +26,8 @@ model:
   batch_size: 8
   attention_head_size: 8
   output_size: 1
-  encoder_input_satellite: {"0": 24, "1": 24, "2": 24, "3": 24, "4": 24, "5": 24}
-  satellite_flags: {"0": False, "1": False, "2": False, "3": False, "4": False, "5": False}
+  encoder_input_satellite: {"0": 24, "1": 24, "2": 24, "3": 24, "4": 24, "5": 24, "6": 24, "7": 24, "8": 24, "9": 24, "10": 24}
+  satellite_flags: {"0": False, "1": False, "2": False, "3": False, "4": False, "5": False, "6": False, "7": False, "8": False, "9": False, "10": False}
   encoder_input_timeseries: {"0": 24, "1": 24, "2": 24, "3": 24, "4": 24, "5": 24, "6": 24, "7": 24, "8": 24, "9": 24, "10": 24, "11": 24, "12": 24, "13": 24, "14": 24}
   timeseries_flags: {"0": False, "1": False, "2": False, "3": False, "4": False, "5": False, "6": False, "7": False, "8": False, "9": False, "10": False, "11": False, "12": False, "13": False, "14": False}
   input_length: 24

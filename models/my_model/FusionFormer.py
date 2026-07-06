@@ -41,7 +41,11 @@ class FusionFormer(pl.LightningModule):
         self.bands_number = bands_number
         self.frequencies = frequencies
         self.patch_size = patch_size
-        self.image_size = image_size
+        self.image_size = tuple(image_size)
+        if len(self.image_size) != 2 or self.image_size[0] != self.image_size[1]:
+            raise ValueError(f"FusionFormer expects square image_size, got {self.image_size}")
+        if self.image_size[0] % 4 != 0:
+            raise ValueError(f"FusionFormer image_size must be divisible by 4, got {self.image_size}")
         self.save_hyperparameters()
         self.hidden_size = input_length
         self.output_length = output_length
@@ -58,6 +62,17 @@ class FusionFormer(pl.LightningModule):
             str(k): v
             for k, v in sorted(encoder_input_satellite.items(), key=lambda item: int(item[0]))[: self.bands_number]
         }
+        self.encoder_input_satellite = encoder_input_satellite
+        self.satellite_channels = len(encoder_input_satellite)
+        self.time_coord_channels = len(self.frequencies) * 2
+        self.expected_ts_features = len(encoder_input_timeseries) - self.time_coord_channels
+        if self.satellite_channels <= 0:
+            raise ValueError("FusionFormer requires at least one satellite input channel")
+        if self.expected_ts_features <= 0:
+            raise ValueError(
+                "encoder_input_timeseries must include model timeseries features plus "
+                f"{self.time_coord_channels} encoded time features"
+            )
         satellite_flags = {
             str(k): satellite_flags.get(str(k), False)
             for k in encoder_input_satellite.keys()
@@ -70,17 +85,18 @@ class FusionFormer(pl.LightningModule):
             Rearrange(
                 "b t c h w -> b t h w c"
             ),
-            nn.Linear(9, 16)
+            nn.Linear(1 + self.time_coord_channels, 16)
         )
         self.optical_flow_embedding = nn.Sequential(
             Rearrange(
                 "b t c h w -> b t h w c"
             ),
-            nn.Linear(len(encoder_input_satellite) * 2 + 8, 16)
+            nn.Linear(self.satellite_channels * 2 + self.time_coord_channels, 16)
         )
-        self.convlstm = ConvLSTM(input_channel=16, image_size=64, seq_len=self.output_length)
-        self.GKConvLSTM = GKConvLSTM(input_channel=16, image_size=64, seq_len=self.output_length)
-        self.linear = nn.Linear(64*16*16, 64)
+        self.convlstm = ConvLSTM(input_channel=16, image_size=self.image_size[0], seq_len=self.output_length)
+        self.GKConvLSTM = GKConvLSTM(input_channel=16, image_size=self.image_size[0], seq_len=self.output_length)
+        recurrent_flattened_size = self.image_size[0] * (self.image_size[0] // 4) * (self.image_size[0] // 4)
+        self.linear = nn.Linear(recurrent_flattened_size, 64)
         self.LRU_1 = Linear_Residual_Unit(input_size=64, hidden_size=self.dim, output_size=self.dim, dropout=self.dropout, residual=True)
         self.LRU_2 = Linear_Residual_Unit(input_size=64, hidden_size=self.dim, output_size=self.dim,
                                           dropout=self.dropout, residual=True)
@@ -105,6 +121,36 @@ class FusionFormer(pl.LightningModule):
             nn.LayerNorm(self.dim),
             nn.Linear(self.dim, self.output_size),
         )
+
+    def _validate_inputs(
+        self,
+        optical_flow: torch.Tensor,
+        ctx: torch.Tensor,
+        ts: torch.Tensor,
+        time_coords: torch.Tensor,
+    ) -> None:
+        B, T, C, H, W = ctx.shape
+        expected_flow_shape = (B, T, self.satellite_channels * 2, H, W)
+        if T != self.hidden_size:
+            raise ValueError(f"Expected context sequence length {self.hidden_size}, got {T}")
+        if (H, W) != self.image_size:
+            raise ValueError(f"Expected context image size {self.image_size}, got {(H, W)}")
+        if C != self.satellite_channels:
+            raise ValueError(f"Expected {self.satellite_channels} satellite channels, got {C}")
+        if tuple(optical_flow.shape) != expected_flow_shape:
+            raise ValueError(f"Expected optical_flow shape {expected_flow_shape}, got {tuple(optical_flow.shape)}")
+        if ts.shape[1] != self.hidden_size:
+            raise ValueError(f"Expected timeseries sequence length {self.hidden_size}, got {ts.shape[1]}")
+        if ts.shape[-1] != self.expected_ts_features:
+            raise ValueError(f"Expected {self.expected_ts_features} model timeseries features, got {ts.shape[-1]}")
+        if time_coords.shape[:2] != (B, T) or time_coords.shape[-2:] != (H, W):
+            raise ValueError(
+                "time_coords must align with context batch, sequence, height, and width; "
+                f"got {tuple(time_coords.shape)} for context {tuple(ctx.shape)}"
+            )
+        if time_coords.shape[2] != len(self.frequencies):
+            raise ValueError(f"Expected {len(self.frequencies)} raw time coordinate channels, got {time_coords.shape[2]}")
+
     def forward(self,optical_flow: torch.Tensor, ctx: torch.Tensor, ctx_coords: torch.Tensor, ts: torch.Tensor, ts_coords: torch.Tensor, time_coords: torch.Tensor, mask: bool = True):
 
         """
@@ -119,6 +165,7 @@ class FusionFormer(pl.LightningModule):
         Returns:
         """
         B, T, C, H, W = ctx.shape
+        self._validate_inputs(optical_flow, ctx, ts, time_coords)
         time_coords = self.time_coords_encoder(time_coords)
         ctx = torch.cat([ctx, time_coords], axis=2)
         ts = torch.cat([ts, time_coords[..., 0, 0]], axis=-1)
