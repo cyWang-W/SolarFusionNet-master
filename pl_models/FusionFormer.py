@@ -2,6 +2,7 @@ import torch
 import wandb
 from torchmetrics import MeanMetric
 import os
+import copy
 from pl_models.utils import ContextMixerModule
 import numpy as np
 
@@ -20,6 +21,9 @@ class FusionFormer(ContextMixerModule):
         self.train_loss = MeanMetric()
         self.val_loss = MeanMetric()
         self.test_loss = MeanMetric()
+        if self.hparams.metrics.val is not None:
+            for key in self.hparams.metrics.val:
+                setattr(self, f"test_{key}", copy.deepcopy(getattr(self, f"val_{key}")))
 
     def forward(self, x_ctx, ctx_coords, x_ts, ts_coords, time_coords, mask=True, optical_flow=None):
         if optical_flow is None:
@@ -131,17 +135,17 @@ class FusionFormer(ContextMixerModule):
 
         loss = self.criterion(y_hat, y_ts)
 
-        self.val_loss(loss)
-        self.log("test/loss", self.val_loss, on_step=True, prog_bar=True)
+        self.test_loss(loss)
+        self.log("test/loss", self.test_loss, on_step=True, prog_bar=True)
 
         for key in self.hparams.metrics.val:
-            metric = getattr(self, f"val_{key}")
+            metric = getattr(self, f"test_{key}")
             if hasattr(metric, "needs_previous") and metric.needs_previous:
                 metric(y_hat, y_ts, y_prev_ts)
             else:
                 metric(y_hat, y_ts)
             self.log(
-                f"val/{key}",
+                f"test/{key}",
                 metric,
                 on_step=False,
                 on_epoch=True,
