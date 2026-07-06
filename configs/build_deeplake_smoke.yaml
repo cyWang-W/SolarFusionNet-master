@@ -1,0 +1,17 @@
+defaults:
+  - _self_
+  - hydra: default.yaml
+  - paths: default.yaml
+
+task_name: "build_deeplake_smoke"
+
+reproject_zarr:
+station_tab:
+output_path:
+stats_path:
+
+year: 2020_nonhrv
+station: IZA
+station_lat: 28.30935
+station_lon: -16.49926
+station_elevation: 2372.9

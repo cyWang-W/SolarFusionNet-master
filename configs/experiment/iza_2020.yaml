@@ -1,0 +1,31 @@
+# @package _global_
+
+paths:
+  data_dir: E:\solarfusionnet_preprocess\deeplake_iza_2020
+  stats_path: E:\solarfusionnet_preprocess\deeplake_iza_2020_stats.json
+
+datamodule:
+  batch_size: 2
+  num_workers: 0
+  dataset:
+    years:
+      train: ["2020_train"]
+      val: ["2020_val"]
+      test: ["2020_test"]
+    stations:
+      train: ["IZA"]
+      val: ["IZA"]
+      test: ["IZA"]
+
+pl_module:
+  model:
+    bands_number: 1
+    batch_size: 2
+
+trainer:
+  max_epochs: 5
+  limit_train_batches: 200
+  limit_val_batches: 50
+  limit_test_batches: 50
+
+test: true

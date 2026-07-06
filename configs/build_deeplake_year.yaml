@@ -1,0 +1,16 @@
+defaults:
+  - _self_
+  - hydra: default.yaml
+  - paths: default.yaml
+
+task_name: "build_deeplake_year"
+
+reproject_dir: E:\solarfusionnet_preprocess\reproject_2020_64
+station_dir: E:\solarfusionnet_preprocess\raw_station_2020
+output_path: E:\solarfusionnet_preprocess\deeplake_iza_2020
+stats_path: E:\solarfusionnet_preprocess\deeplake_iza_2020_stats.json
+
+station: IZA
+station_lat: 28.30935
+station_lon: -16.49926
+station_elevation: 2372.9
