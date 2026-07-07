@@ -2,6 +2,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 
 def main() -> None:
@@ -9,30 +10,54 @@ def main() -> None:
     pred_dir = root / "outputs" / "train" / "runs" / "alice" / "predictions"
     pred = np.load(pred_dir / "all_predictions.npy").squeeze(-1)
     gt = np.load(pred_dir / "all_ground_truths.npy").squeeze(-1)
+    time_coords = np.load(pred_dir / "all_time_coords.npy")
 
     rmse = float(np.sqrt(np.mean((pred - gt) ** 2)))
     mae = float(np.mean(np.abs(pred - gt)))
+    horizon_hours = np.arange(1, pred.shape[1] + 1) * 0.25
 
-    plt.figure(figsize=(12, 7))
-    for idx in [0, 10, 25, 50, 75]:
-        if idx >= len(pred):
+    daylight = gt.mean(axis=1)
+    candidate_order = np.argsort(daylight)[::-1]
+    selected = []
+    for idx in candidate_order:
+        if len(selected) == 6:
+            break
+        if daylight[idx] < 0.1:
             continue
-        x = np.arange(pred.shape[1]) + idx * pred.shape[1]
-        plt.plot(x, gt[idx], color="black", alpha=0.55, linewidth=1.5)
-        plt.plot(x, pred[idx], alpha=0.8, linewidth=1.4)
-    plt.title(f"Alice Test Forecast Samples | RMSE={rmse:.3f}, MAE={mae:.3f}")
-    plt.xlabel("Forecast step blocks")
-    plt.ylabel("CSI")
-    plt.grid(alpha=0.25)
+        if all(abs(int(idx) - int(prev)) >= 8 for prev in selected):
+            selected.append(int(idx))
+    if len(selected) < 6:
+        selected = list(candidate_order[:6])
+    selected = sorted(selected)
+
+    fig, axes = plt.subplots(2, 3, figsize=(15, 8), sharex=True, sharey=True)
+    for ax, idx in zip(axes.ravel(), selected):
+        sample_rmse = float(np.sqrt(np.mean((pred[idx] - gt[idx]) ** 2)))
+        input_month, input_day, input_hour, input_minute = time_coords[idx, -1, :, 0, 0].astype(int)
+        title = f"{input_month:02d}-{input_day:02d} {input_hour:02d}:{input_minute:02d} UTC | RMSE {sample_rmse:.3f}"
+        ax.plot(horizon_hours, gt[idx], color="#202124", linewidth=2.4, label="Ground truth")
+        ax.plot(horizon_hours, pred[idx], color="#d62728", linewidth=2.2, label="Prediction")
+        ax.fill_between(horizon_hours, gt[idx], pred[idx], color="#d62728", alpha=0.12, linewidth=0)
+        ax.set_title(title, fontsize=11)
+        ax.set_xlim(float(horizon_hours[0]), float(horizon_hours[-1]))
+        ax.set_ylim(-0.05, max(1.15, float(gt[selected].max()) + 0.05, float(pred[selected].max()) + 0.05))
+        ax.grid(alpha=0.22)
+    axes[0, 0].set_ylabel("CSI")
+    axes[1, 0].set_ylabel("CSI")
+    for ax in axes[1]:
+        ax.set_xlabel("Forecast horizon (hours)")
+    axes[0, 0].legend(loc="upper right", frameon=False)
+    fig.suptitle(f"Alice Springs 6-hour CSI Forecasts | Test RMSE={rmse:.3f}, MAE={mae:.3f}", fontsize=15, y=0.98)
     plt.tight_layout()
     plt.savefig(pred_dir / "forecast_samples.png", dpi=180)
+    plt.savefig(pred_dir / "forecast_panels.png", dpi=180)
     plt.close()
 
-    plt.figure(figsize=(6.5, 6.5))
-    plt.scatter(gt.ravel(), pred.ravel(), s=8, alpha=0.28)
+    plt.figure(figsize=(7, 6.5))
+    plt.scatter(gt.ravel(), pred.ravel(), s=9, alpha=0.22, color="#1f77b4", edgecolors="none")
     lo = float(min(gt.min(), pred.min()))
     hi = float(max(gt.max(), pred.max()))
-    plt.plot([lo, hi], [lo, hi], color="red", linewidth=1.5)
+    plt.plot([lo, hi], [lo, hi], color="#d62728", linewidth=1.7)
     plt.title(f"Alice Predicted vs Ground Truth | RMSE={rmse:.3f}, MAE={mae:.3f}")
     plt.xlabel("Ground truth CSI")
     plt.ylabel("Predicted CSI")
@@ -46,8 +71,12 @@ def main() -> None:
         fp.write(f"pred_shape={pred.shape}\nground_truth_shape={gt.shape}\n")
         fp.write(f"pred_min={float(pred.min())}\npred_max={float(pred.max())}\n")
         fp.write(f"ground_truth_min={float(gt.min())}\nground_truth_max={float(gt.max())}\n")
+        fp.write("forecast_horizon_hours=6\n")
+        fp.write("forecast_step_minutes=15\n")
+        fp.write(f"selected_samples={selected}\n")
 
     print(pred_dir / "forecast_samples.png")
+    print(pred_dir / "forecast_panels.png")
     print(pred_dir / "prediction_scatter.png")
     print(pred_dir / "metrics.txt")
 
