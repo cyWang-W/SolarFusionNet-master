@@ -11,7 +11,7 @@ from typing import List, Optional, Tuple
 from pathlib import Path
 import os
 os.environ['GIT_PYTHON_GIT_EXECUTABLE'] = 'E:/application/Git/bin/git'
-os.environ["MY_UNIQUE_ID"] = "joty"
+os.environ.setdefault("MY_UNIQUE_ID", "joty")
 os.environ["HYDRA_FULL_ERROR"] = "1"
 import hydra
 import pytorch_lightning as pl

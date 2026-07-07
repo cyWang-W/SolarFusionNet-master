@@ -1,0 +1,7 @@
+alice_root: E:\Alice
+output_path: E:\Alice\deeplake_alice
+stats_path: E:\Alice\deeplake_alice_stats.json
+image_size: 64
+station_lat: -23.6980
+station_lon: 133.8807
+station_elevation: 545

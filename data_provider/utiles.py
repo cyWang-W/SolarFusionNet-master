@@ -23,12 +23,15 @@ def calculate_possible_starts(*dates: Any, frames_total: int) -> Tuple[Any]:
     ]
 
     difference_range = np.diff(date_intersection)
+    positive_differences = difference_range[difference_range > np.timedelta64(0, "s")]
+    if len(positive_differences) == 0:
+        return tuple(np.array([], dtype=int) for _ in dates)
+    expected_step = np.min(positive_differences)
 
     counted = np.zeros(difference_range.shape)
     for idx, time in enumerate(difference_range):
         if idx != counted.shape[0] - 1:
-            if time == np.timedelta64(300, "s"):
-            # if time == np.timedelta64(60000000000, "ns"):
+            if time == expected_step:
                 counted[idx + 1] = 1
 
     cum_sum = counted.copy()
@@ -108,4 +111,3 @@ class MyTensor:
 
     def __getitem__(self, index):
         return self.tensor[index]
-

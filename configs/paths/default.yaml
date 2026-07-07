@@ -7,7 +7,7 @@ root_dir: ${oc.env:PROJECT_ROOT}
 data_dir: 
 stats_path: 
 # path to logging directory
-log_dir: 
+log_dir: ${paths.root_dir}/outputs
 # path to output directory, created dynamically by hydra
 # path generation pattern is specified in `configs/hydra/default.yaml`
 # use it to store all files generated during the run, like ckpts and metrics
