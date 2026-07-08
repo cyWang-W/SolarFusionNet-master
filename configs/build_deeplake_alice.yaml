@@ -5,3 +5,6 @@ image_size: 64
 station_lat: -23.6980
 station_lon: 133.8807
 station_elevation: 545
+satellite_timestamp_timezone: utc
+expected_step_minutes: 15
+station_alignment: exact

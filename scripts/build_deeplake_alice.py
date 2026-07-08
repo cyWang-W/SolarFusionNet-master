@@ -91,11 +91,25 @@ def make_tvl1():
     )
 
 
-def compute_optical_flow(context: np.ndarray) -> np.ndarray:
+def report_frame_gaps(split_name: str, times: pd.DatetimeIndex, expected_step: pd.Timedelta) -> None:
+    deltas = times.to_series().diff().dropna()
+    gaps = deltas[deltas != expected_step]
+    if gaps.empty:
+        print(f"{split_name}: all frame deltas are {expected_step}")
+        return
+    print(f"{split_name}: {len(gaps)} non-{expected_step} frame gaps")
+    for timestamp, delta in gaps.head(10).items():
+        previous = timestamp - delta
+        print(f"  gap {previous} -> {timestamp}: {delta}")
+
+
+def compute_optical_flow(context: np.ndarray, times: pd.DatetimeIndex, expected_step: pd.Timedelta) -> np.ndarray:
     n, c, h, w = context.shape
     out = np.zeros((n, c * 2, h, w), dtype="float32")
     frames = context.astype("float32")
     for idx in range(1, n):
+        if times[idx] - times[idx - 1] != expected_step:
+            continue
         for channel in range(c):
             flow = make_tvl1().calc(frames[idx - 1, channel], frames[idx, channel], None)
             out[idx, 2 * channel : 2 * channel + 2] = flow.transpose(2, 0, 1)
@@ -134,8 +148,19 @@ def read_station(csv_path: Path) -> pd.DataFrame:
     return station[CHANNELS].astype("float32")
 
 
-def make_station_frame(source: pd.DataFrame, times: pd.DatetimeIndex) -> pd.DataFrame:
-    return source.reindex(times).interpolate(limit_direction="both").fillna(0.0).astype("float32")
+def make_station_frame(source: pd.DataFrame, times: pd.DatetimeIndex, alignment: str) -> pd.DataFrame:
+    missing = times.difference(source.index)
+    if alignment == "exact":
+        if len(missing):
+            sample = ", ".join(str(ts) for ts in missing[:10])
+            raise ValueError(
+                f"Station CSV is missing {len(missing)} satellite UTC timestamps. "
+                f"First missing values: {sample}"
+            )
+        return source.loc[times].astype("float32")
+    if alignment == "interpolate":
+        return source.reindex(times).interpolate(limit_direction="both").fillna(0.0).astype("float32")
+    raise ValueError(f"Unsupported station_alignment={alignment!r}; use 'exact' or 'interpolate'")
 
 
 def local_coordinates(alice_root: Path, image_size: int):
@@ -203,6 +228,9 @@ def main(cfg: DictConfig) -> None:
     output_path = Path(cfg.output_path)
     stats_path = Path(cfg.stats_path)
     image_size = int(cfg.image_size)
+    expected_step = pd.Timedelta(minutes=int(cfg.expected_step_minutes))
+    if str(cfg.satellite_timestamp_timezone).lower() != "utc":
+        raise ValueError("Alice satellite filenames are expected to be UTC timestamps")
 
     if output_path.exists():
         shutil.rmtree(output_path)
@@ -222,9 +250,10 @@ def main(cfg: DictConfig) -> None:
     for split_name, split_dir in split_dirs.items():
         frame_df = list_frames(split_dir)
         times = pd.DatetimeIndex(frame_df["time_utc"])
-        station_df = make_station_frame(station_source, times)
+        report_frame_gaps(split_name, times, expected_step)
+        station_df = make_station_frame(station_source, times, str(cfg.station_alignment))
         context = load_context(frame_df, image_size)
-        optflow = compute_optical_flow(context)
+        optflow = compute_optical_flow(context, times, expected_step)
         write_split(ds, split_name, frame_df, context, optflow, station_df, lat, lon, elevation, cfg)
         ds.commit(f"write {split_name}")
         if split_name == "alice_train":
