@@ -50,6 +50,8 @@ def parse_timestamp(path: Path) -> pd.Timestamp:
 
 
 def list_frames(split_dir: Path) -> pd.DataFrame:
+    # Alice *_s.mat files are the actual satellite image data. *_t.mat and *_o.mat
+    # are auxiliary products and are intentionally excluded from this dataset.
     records = [(parse_timestamp(path), path) for path in split_dir.rglob("*_s.mat")]
     if not records:
         raise FileNotFoundError(f"No *_s.mat files under {split_dir}")
@@ -145,7 +147,7 @@ def read_station(csv_path: Path) -> pd.DataFrame:
     station["rh"] = source[voltage_cols].mean(axis=1)
     station["pressure"] = source["Hour_Local"].astype("float32")
     station["CSI"] = (irradiance / csi_denominator).clip(lower=0, upper=1.5)
-    return station[CHANNELS].astype("float32")
+    return station[CHANNELS].interpolate(limit_direction="both").fillna(0.0).astype("float32")
 
 
 def make_station_frame(source: pd.DataFrame, times: pd.DatetimeIndex, alignment: str) -> pd.DataFrame:
@@ -182,6 +184,7 @@ def write_split(ds, split_name, frame_df, context, optflow, station_df, lat, lon
         chunk_compression="lz4",
     )
     context_tensor.info.update({"context_channels": CONTEXT_CHANNELS})
+    context_tensor.info.update({"source_file_pattern": "*_s.mat"})
     context_tensor.extend(context)
     create_tensor(ds, f"{prefix}/context/time_utc", frame_df["time_utc"].to_numpy(dtype="datetime64[ns]"))
     create_tensor(ds, f"{prefix}/context/latitude", lat.astype("float32"))

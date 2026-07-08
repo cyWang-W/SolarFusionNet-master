@@ -1,0 +1,54 @@
+# @package _global_
+
+paths:
+  data_dir: E:\Alice\deeplake_alice
+  stats_path: E:\Alice\deeplake_alice_stats.json
+
+datamodule:
+  batch_size: 2
+  num_workers: 0
+  dataset:
+    years:
+      train: ["alice_train"]
+      val: ["alice_val"]
+      test: ["alice_test"]
+    stations:
+      train: ["ALICE"]
+      val: ["ALICE"]
+      test: ["ALICE"]
+    seq_len: 24
+    label_len: 0
+    pred_len: 1
+
+pl_module:
+  optimizer:
+    lr: 0.0005
+    weight_decay: 0.05
+  scheduler:
+    warmup: 10
+    max_iters: ${trainer.max_epochs}
+  model:
+    bands_number: 6
+    batch_size: 2
+    output_length: 1
+    encoder_input_satellite: {"0": 24, "1": 24, "2": 24, "3": 24, "4": 24, "5": 24}
+    satellite_flags: {"0": false, "1": false, "2": false, "3": false, "4": false, "5": false}
+
+callbacks:
+  early_stopping:
+    monitor: val/rmse
+    patience: 25
+    mode: min
+  model_checkpoint:
+    monitor: val/rmse
+    mode: min
+    save_last: true
+
+trainer:
+  max_epochs: 200
+  limit_train_batches: 800
+  limit_val_batches: 1.0
+  limit_test_batches: 1.0
+  gradient_clip_val: 1.0
+
+test: true
